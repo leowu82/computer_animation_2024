@@ -4,6 +4,9 @@
 #include "Eigen/Dense"
 #include "acclaim/bone.h"
 #include "util/helper.h"
+#include <queue>
+
+using namespace std;
 
 namespace kinematics {
 
@@ -23,6 +26,39 @@ void forwardSolver(const acclaim::Posture& posture, acclaim::Bone* bone) {
     //      e.g. rotateDegreeXYZ(x, y, z) means:
     //      x, y and z are presented in degree rotate z degrees along z - axis first, then y degrees along y - axis, and
     //      then x degrees along x - axis
+
+    // init root
+    bone->start_position = posture.bone_translations[bone->idx];
+    bone->rotation = util::rotateDegreeZYX(posture.bone_rotations[bone->idx]);
+    bone->end_position = bone->start_position + bone->rotation * bone->dir.normalized() * bone->length;
+
+    // BFS
+    int boneNum = posture.bone_translations.size();
+    vector<bool> visited(boneNum, false);
+    queue<acclaim::Bone*> q;
+
+    visited[bone->idx] = true;
+    q.push(bone->child);
+    for (acclaim::Bone* temp = bone->sibling; temp != nullptr; temp = temp->sibling) q.push(temp);
+
+    while (!q.empty()) {
+        acclaim::Bone* u = q.front();
+        q.pop();
+        visited[u->idx] = true;
+
+        // deal with rotation
+        u->start_position = u->parent->end_position;
+        u->rotation = u->parent->rotation * u->rot_parent_current * util::rotateDegreeZYX(posture.bone_rotations[u->idx]);
+        u->end_position = u->start_position + u->rotation * (u->dir.normalized() * u->length);
+
+        // find neighbor
+        for (acclaim::Bone* v = u->sibling; v != nullptr; v = v->sibling) {
+            if (!visited[v->idx]) q.push(v);
+        }
+
+        // handle child
+        if (u->child != nullptr && !visited[u->child->idx]) q.push(u->child);
+    }
 }
 
 Eigen::VectorXd pseudoInverseLinearSolver(const Eigen::Matrix4Xd& Jacobian, const Eigen::Vector4d& target) {
