@@ -39,7 +39,7 @@ void forwardSolver(const acclaim::Posture& posture, acclaim::Bone* bone) {
 
     visited[bone->idx] = true;
     q.push(bone->child);
-    for (acclaim::Bone* temp = bone->sibling; temp != nullptr; temp = temp->sibling) q.push(temp);
+    // for (acclaim::Bone* temp = bone->sibling; temp != nullptr; temp = temp->sibling) q.push(temp);
 
     while (!q.empty()) {
         acclaim::Bone* u = q.front();
@@ -71,6 +71,27 @@ Eigen::VectorXd pseudoInverseLinearSolver(const Eigen::Matrix4Xd& Jacobian, cons
     //   2. Some of them have some limitation, if you use that method you should check it.
     Eigen::VectorXd deltatheta(Jacobian.cols());
     deltatheta.setZero();
+
+    // SVD decomp using Eigen library
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(Jacobian, Eigen::ComputeThinU | Eigen::ComputeThinV);
+    
+    // Eigen::MatrixXd sigma = svd.singularValues().asDiagonal();
+    Eigen::MatrixXd U = svd.matrixU();
+    Eigen::MatrixXd V = svd.matrixV();
+    Eigen::VectorXd sigma = svd.singularValues();
+
+    // sigma pseudo inverse
+    Eigen::VectorXd sigmaInv(Jacobian.cols());
+    for (int i = 0; i < sigma.size(); ++i) {
+        if (sigma(i) > 1e-3) {
+            sigmaInv(i) = 1.0 / sigma(i);
+        } else {
+            sigmaInv(i) = 0.0;
+        }
+    }
+
+    // Calc x = A+ * b
+    deltatheta = V * sigmaInv.asDiagonal() * U.transpose() * target;
 
     return deltatheta;
 }
