@@ -5,6 +5,7 @@
 #include "acclaim/bone.h"
 #include "util/helper.h"
 #include <queue>
+#include <vector>
 
 using namespace std;
 
@@ -31,12 +32,12 @@ void forwardSolver(const acclaim::Posture& posture, acclaim::Bone* bone) {
     if (bone == nullptr) return;
 
     if (bone->idx == 0) {
-        bone->rotation = util::rotateDegreeZYX(posture.bone_rotations[bone->idx]);
         bone->start_position = posture.bone_translations[bone->idx];
+        bone->rotation = util::rotateDegreeZYX(posture.bone_rotations[bone->idx]);
         bone->end_position = bone->start_position + bone->rotation * bone->dir * bone->length;
     } else {
-        bone->rotation = bone->parent->rotation * bone->rot_parent_current * util::rotateDegreeZYX(posture.bone_rotations[bone->idx]); 
         bone->start_position = bone->parent->end_position;
+        bone->rotation = bone->parent->rotation * bone->rot_parent_current * util::rotateDegreeZYX(posture.bone_rotations[bone->idx]); 
         bone->end_position = bone->start_position + bone->rotation * bone->dir * bone->length;
     }
 
@@ -54,8 +55,8 @@ Eigen::VectorXd pseudoInverseLinearSolver(const Eigen::Matrix4Xd& Jacobian, cons
     // Note:
     //   1. SVD or other pseudo-inverse method is useful
     //   2. Some of them have some limitation, if you use that method you should check it.
-    //Eigen::VectorXd deltatheta(Jacobian.cols());
-    //deltatheta.setZero();
+    Eigen::VectorXd deltatheta(Jacobian.cols());
+    deltatheta.setZero();
 
     // SVD decomp using Eigen library
     Eigen::JacobiSVD<Eigen::Matrix4Xd> svd(Jacobian, Eigen::ComputeFullU | Eigen::ComputeFullV);
@@ -81,7 +82,8 @@ Eigen::VectorXd pseudoInverseLinearSolver(const Eigen::Matrix4Xd& Jacobian, cons
     //// Calc x = A+ * b
     //return V * sigma.asDiagonal() * U.transpose() * target;
 
-    return svd.solve(target);
+    deltatheta = svd.solve(target);
+    return deltatheta;
 }
 
 /**
@@ -112,6 +114,7 @@ bool inverseJacobianIKSolver(std::vector<Eigen::Vector4d> target_pos, acclaim::B
     // Of course you can ignore it (Any code below this line) and write your own code.
     acclaim::Posture original_posture(posture);
 
+    bool stable = true;
     size_t bone_num = 0;
 
     // Traverse each chain
@@ -132,22 +135,25 @@ bool inverseJacobianIKSolver(std::vector<Eigen::Vector4d> target_pos, acclaim::B
             //   1. You should not put rotation in jacobian if it doesn't have that DoF.
             //   2. jacobian.col(/* some column index */) = /* jacobian column */
 
-            for (auto i = 0; i < bone_num; i++) {
+            for (long long i = 0; i < bone_num; i++) {
                 //Eigen::Matrix3d unit_rotation = boneChains[chainIdx][i]->rotation.linear();
-                auto endEffector_vector = target_pos[chainIdx] - *jointChains[chainIdx][i];
+                Eigen::Vector3d endEffector_vector = target_pos[chainIdx].head<3>() - boneChains[chainIdx][i]->start_position.head<3>();
 
                 if (boneChains[chainIdx][i]->dofrx) {
-                    auto unit_x = Eigen::Vector4d(1, 0, 0, 0);
-                    Jacobian.col(3 * i) = unit_x.cross3(endEffector_vector);
+                    Eigen::Vector3d rotation_vector = boneChains[chainIdx][i]->rotation.matrix().col(0).head<3>();  // x
+                    Eigen::Vector3d temp = rotation_vector.cross(endEffector_vector);
+                    Jacobian.col(3 * i) = Eigen::Vector4d(temp[0], temp[1], temp[2], 0);
                 }
                 if (boneChains[chainIdx][i]->dofry) {
-                    auto unit_y = Eigen::Vector4d(0, 1, 0, 0);
-                    Jacobian.col(3 * i + 1) = unit_y.cross3(endEffector_vector);
+                    Eigen::Vector3d rotation_vector = boneChains[chainIdx][i]->rotation.matrix().col(1).head<3>();  // y
+                    Eigen::Vector3d temp = rotation_vector.cross(endEffector_vector);
+                    Jacobian.col(3 * i + 1) = Eigen::Vector4d(temp[0], temp[1], temp[2], 0);
                 }
                 if (boneChains[chainIdx][i]->dofrz) {
-                    auto unit_z = Eigen::Vector4d(0, 0, 1, 0);
-                    Jacobian.col(3 * i + 2) = unit_z.cross3(endEffector_vector);
-                }
+                    Eigen::Vector3d rotation_vector = boneChains[chainIdx][i]->rotation.matrix().col(2).head<3>();  // z
+                    Eigen::Vector3d temp = rotation_vector.cross(endEffector_vector);
+                    Jacobian.col(3 * i + 2) = Eigen::Vector4d(temp[0], temp[1], temp[2], 0);
+                } 
             }
 
             Eigen::VectorXd deltatheta = step * pseudoInverseLinearSolver(Jacobian, desiredVector);
@@ -159,38 +165,35 @@ bool inverseJacobianIKSolver(std::vector<Eigen::Vector4d> target_pos, acclaim::B
             // Bonus:
             //   1. You cannot ignore rotation limit of the bone.
 
-            for (auto i = 0; i < bone_num; i++) {
+            for (long long i = 0; i < bone_num; i++) {
                 auto curBone = boneChains[chainIdx][i];
+                Eigen::Vector3d temp = deltatheta.segment(i * 3, 3);
+                posture.bone_rotations[curBone->idx] += 
+                    util::toDegree(Eigen::Vector4d(temp[0], temp[1], temp[2], 0));
 
-                if (curBone->dofrx) {
-                    auto new_rot = posture.bone_rotations[curBone->idx](0) + deltatheta(3 * i);
-                    if (new_rot > boneChains[chainIdx][i]->rxmax) {
-                        posture.bone_rotations[curBone->idx](0) = boneChains[chainIdx][i]->rxmax;
-                    } else if (new_rot < boneChains[chainIdx][i]->rxmin) {
-                        posture.bone_rotations[curBone->idx](0) = boneChains[chainIdx][i]->rxmin;
-                    } 
-                    else posture.bone_rotations[curBone->idx](0) = new_rot;
+                // Bonus 
+                if (posture.bone_rotations[curBone->idx][0] > curBone->rxmax) {
+                    //stable = false;
+                    posture.bone_rotations[curBone->idx][0] = curBone->rxmax;
+                } else if (posture.bone_rotations[curBone->idx][0] < curBone->rxmin) {
+                    //stable = false;
+                    posture.bone_rotations[curBone->idx][0] = curBone->rxmin;
+                }
+                if (posture.bone_rotations[curBone->idx][1] > curBone->rymax) {
+                    //stable = false;
+                    posture.bone_rotations[curBone->idx][1] = curBone->rymax;
+                } else if (posture.bone_rotations[curBone->idx][1] < curBone->rymin) {
+                    //stable = false;
+                    posture.bone_rotations[curBone->idx][1] = curBone->rymin;
                 }
 
-                if (curBone->dofry) {
-                    auto new_rot = posture.bone_rotations[curBone->idx](1) + deltatheta(3 * i + 1);
-                    if (new_rot > boneChains[chainIdx][i]->rymax) {
-                        posture.bone_rotations[curBone->idx](1) = boneChains[chainIdx][i]->rymax;
-                    } else if (new_rot < boneChains[chainIdx][i]->rymin) {
-                        posture.bone_rotations[curBone->idx](1) = boneChains[chainIdx][i]->rymin;
-                    } 
-                    else posture.bone_rotations[curBone->idx](1) = new_rot;
-                }
-
-                if (curBone->dofrz) {
-                    auto new_rot = posture.bone_rotations[curBone->idx](2) + deltatheta(3 * i + 2);
-                    if (new_rot > boneChains[chainIdx][i]->rzmax) {
-                        posture.bone_rotations[curBone->idx](2) = boneChains[chainIdx][i]->rzmax;
-                    } else if (new_rot < boneChains[chainIdx][i]->rzmin) {
-                        posture.bone_rotations[curBone->idx](2) = boneChains[chainIdx][i]->rzmin;
-                    } 
-                    else posture.bone_rotations[curBone->idx](2) = new_rot;
-                }
+                if (posture.bone_rotations[curBone->idx][2] > curBone->rzmax) {
+                    //stable = false;
+                    posture.bone_rotations[curBone->idx][2] = curBone->rzmax;
+                } else if (posture.bone_rotations[curBone->idx][2] < curBone->rzmin) {
+                    //stable = false;
+                    posture.bone_rotations[curBone->idx][2] = curBone->rzmin;
+                } 
             }
 
             forwardSolver(posture, root_bone);
@@ -204,7 +207,6 @@ bool inverseJacobianIKSolver(std::vector<Eigen::Vector4d> target_pos, acclaim::B
 
     // Return whether IK is stable (i.e. whether the ball is reachable) and let the skeleton not swing its hand in the
     // air
-    bool stable = true;
     for (int i = 0; i < boneChains.size(); ++i) {
         if ((target_pos[i] - *jointChains[i][0]).norm() > epsilon) {
             stable = false;
