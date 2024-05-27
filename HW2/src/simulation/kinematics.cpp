@@ -61,29 +61,29 @@ Eigen::VectorXd pseudoInverseLinearSolver(const Eigen::Matrix4Xd& Jacobian, cons
     // SVD decomp using Eigen library
     Eigen::JacobiSVD<Eigen::Matrix4Xd> svd(Jacobian, Eigen::ComputeFullU | Eigen::ComputeFullV);
     
-    //Eigen::MatrixXd U = svd.matrixU();
-    //Eigen::MatrixXd V = svd.matrixV();
-    //Eigen::VectorXd sigma = svd.singularValues();
-    ////Eigen::MatrixXd sigma = U.inverse() * Jacobian * (V.transpose()).inverse();
+    Eigen::MatrixXd U = svd.matrixU();
+    Eigen::MatrixXd V = svd.matrixV();
+    Eigen::VectorXd sigma = svd.singularValues();
+    //Eigen::MatrixXd sigma = U.inverse() * Jacobian * (V.transpose()).inverse();
 
-    //// sigma pseudo inverse
-    ////cout << "Calcing SVD...\n";
-    //double tol = 1e-8;
-    //for (int i = 0; i < sigma.size(); ++i) {
-    //    if (sigma(i) > tol) {
-    //        sigma(i) = 1.0 / sigma(i);
-    //        //cout << "pass tol\n";
-    //    } else {
-    //        sigma(i) = 0.0;
-    //        //cout << "not pass tol\n";
-    //    }
-    //}
+    // sigma pseudo inverse
+    //cout << "Calcing SVD...\n";
+    double tol = 1e-8;
+    for (int i = 0; i < sigma.size(); ++i) {
+        if (sigma(i) > tol) {
+            sigma(i) = 1.0 / sigma(i);
+            //cout << "pass tol\n";
+        } else {
+            sigma(i) = 0.0;
+            //cout << "not pass tol\n";
+        }
+    }
 
-    //// Calc x = A+ * b
-    //return V * sigma.asDiagonal() * U.transpose() * target;
+    // Calc x = A+ * b
+    return V * sigma.asDiagonal() * U.transpose() * target;
 
-    deltatheta = svd.solve(target);
-    return deltatheta;
+    //deltatheta = svd.solve(target);
+    //return deltatheta;
 }
 
 /**
@@ -140,17 +140,17 @@ bool inverseJacobianIKSolver(std::vector<Eigen::Vector4d> target_pos, acclaim::B
                 Eigen::Vector3d endEffector_vector = target_pos[chainIdx].head<3>() - boneChains[chainIdx][i]->start_position.head<3>();
 
                 if (boneChains[chainIdx][i]->dofrx) {
-                    Eigen::Vector3d rotation_vector = boneChains[chainIdx][i]->rotation.matrix().col(0).head<3>();  // x
+                    Eigen::Vector3d rotation_vector = boneChains[chainIdx][i]->rotation.matrix().col(0).head<3>();
                     Eigen::Vector3d temp = rotation_vector.cross(endEffector_vector);
                     Jacobian.col(3 * i) = Eigen::Vector4d(temp[0], temp[1], temp[2], 0);
                 }
                 if (boneChains[chainIdx][i]->dofry) {
-                    Eigen::Vector3d rotation_vector = boneChains[chainIdx][i]->rotation.matrix().col(1).head<3>();  // y
+                    Eigen::Vector3d rotation_vector = boneChains[chainIdx][i]->rotation.matrix().col(1).head<3>();
                     Eigen::Vector3d temp = rotation_vector.cross(endEffector_vector);
                     Jacobian.col(3 * i + 1) = Eigen::Vector4d(temp[0], temp[1], temp[2], 0);
                 }
                 if (boneChains[chainIdx][i]->dofrz) {
-                    Eigen::Vector3d rotation_vector = boneChains[chainIdx][i]->rotation.matrix().col(2).head<3>();  // z
+                    Eigen::Vector3d rotation_vector = boneChains[chainIdx][i]->rotation.matrix().col(2).head<3>();
                     Eigen::Vector3d temp = rotation_vector.cross(endEffector_vector);
                     Jacobian.col(3 * i + 2) = Eigen::Vector4d(temp[0], temp[1], temp[2], 0);
                 } 
