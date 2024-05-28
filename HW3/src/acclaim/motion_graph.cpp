@@ -192,27 +192,56 @@ void MotionGraph::constructGraph() {
 
         if (i != numNodes - 1) {
             edges.push_back({i + 1, 0.5});
-            sum += 0.5;
-        }
+        } 
+        else continue;
 
         for (int j = 0; j < distMatrix[i].size(); j++) {
-            if (i != j && distMatrix[i][j] < edgeCostThreshold) {
+            if (i+1 != j && distMatrix[i][j] < edgeCostThreshold) {
                 edges.push_back({j, 1.0 / distMatrix[i][j]});
                 sum += 1.0 / distMatrix[i][j];
             }
         }
 
-        if (edges.empty()) return;
+        if (edges.empty()) continue;
 
-        if (sum == 0.0) {
-            m_graph[i].addEdgeTo(edges[0].first, 1.0);
-        } 
-        else {
-            for (const auto& edge : edges) {
-                m_graph[i].addEdgeTo(edge.first, edge.second / sum);
+        if (edges.size() == 1) {
+            m_graph[i].addEdgeTo(i + 1, 1.0);
+            continue;
+        }
+          
+        for (const auto& edge : edges) {
+            if (edge.first != i + 1) {
+                m_graph[i].addEdgeTo(edge.first, 0.5 * edge.second / sum);
             }
+            else m_graph[i].addEdgeTo(i+1, 0.5);
         }
 
+
+        /*double sum = 0.0;
+        std::vector<std::pair<int, double>> edges;
+        if (i != numNodes - 1) {
+            edges.push_back({i + 1, 0.5});
+        }
+        for (int j = 0; j < distMatrix[i].size(); j++) {
+            if (i != j && distMatrix[i][j] < edgeCostThreshold && i + 1 != j) {
+                edges.push_back({j, 1.0 / distMatrix[i][j]});
+                sum += 1.0 / distMatrix[i][j];
+            }
+        }
+        if (edges.size() == 1) {
+            m_graph[i].addEdgeTo(i + 1, 1.0);
+            continue;
+        }
+        if (edges.size() == 0) {
+            continue;
+        }
+        double test = 0;
+        for (const auto& edge : edges) {
+            if (edge.first == i + 1)
+                m_graph[i].addEdgeTo(i + 1, edge.second);
+            else
+                m_graph[i].addEdgeTo(edge.first, edge.second / sum * (1.0 - 0.5));
+        }*/
     }
 }
 

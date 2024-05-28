@@ -169,7 +169,8 @@ int main() {
     animationFrames.push_back(Animation9.getFrameNum());
 
     std::vector<Motion> tmps;
-    MotionGraph* motionGraph = new MotionGraph(std::vector<Motion>{firstAnimation, secondAnimation, thirdAnimation}, segmentSize, blendingFrame, threshold);
+    MotionGraph* motionGraph = new MotionGraph(std::vector<Motion>{firstAnimation, secondAnimation, thirdAnimation, Animation4, Animation5,
+                                               Animation6, Animation7, Animation8, Animation9}, segmentSize, blendingFrame, threshold);
     motionGraph->constructGraph();
     motionGraph->traverse();
     // Load assets, setup textures
@@ -351,7 +352,7 @@ GLFWwindow* initialize() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     // Create GLFW context
-    GLFWwindow* window = glfwCreateWindow(g_ScreenWidth, g_ScreenHeight, "Inverse Kinematics", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(g_ScreenWidth, g_ScreenHeight, "111550165", nullptr, nullptr);
     if (window == nullptr) {
         std::cerr << "Failed to create OpenGL 4.1 window!" << std::endl;
         return nullptr;

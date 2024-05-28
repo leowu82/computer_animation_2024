@@ -91,24 +91,28 @@ void Motion::transform(Eigen::Vector4d& newFacing, const Eigen::Vector4d &newPos
     Eigen::Vector4d initPos = postures[0].bone_translations[0];
     Eigen::Vector4d delta = newPosition - initPos;
     
-    Eigen::Matrix3d rotMat = util::rotateDegreeZYX(newFacing).normalized().toRotationMatrix() *
-        util::rotateDegreeZYX(postures[0].bone_rotations[0]).normalized().toRotationMatrix().transpose();
+    Eigen::Matrix3d newRotMat = util::rotateDegreeZYX(newFacing).normalized().toRotationMatrix();
+    Eigen::Matrix3d initRotMat = util::rotateDegreeZYX(postures[0].bone_rotations[0]).normalized().toRotationMatrix();
 
-    double thetaY = atan2(rotMat.row(0)[2], rotMat.row(2)[2]);
+    double thetaY = atan2(newRotMat(2, 2), newRotMat(0, 2)) - atan2(initRotMat(2, 2), initRotMat(0, 2));
 
     Eigen::Matrix3d rotMatR = Eigen::AngleAxisd(thetaY, Eigen::Vector3d::UnitY()).toRotationMatrix();
 
     for (auto &posture : postures) {
-        posture.bone_translations[0].head<3>() = 
-            rotMatR * (posture.bone_translations[0].head<3>() - initPos.head<3>()) + initPos.head<3>() + delta.head<3>();
+        Eigen::Vector3d translate = rotMatR *(posture.bone_translations[0].head<3>() - initPos.head<3>()) + initPos.head<3>() +
+            delta.head<3>();
+        posture.bone_translations[0] = Eigen::Vector4d(translate[0], translate[1], translate[2], 0.0);
+            
         
         Eigen::Matrix3d currentRotationMatrix = util::rotateDegreeZYX(posture.bone_rotations[0]).normalized().toRotationMatrix();
         Eigen::Matrix3d newRotationMatrix = rotMatR * currentRotationMatrix;
-        Eigen::Vector3d newRotationEuler = util::Quater2EulerAngle(Eigen::Quaterniond(newRotationMatrix));
-        posture.bone_rotations[0].head<3>() = newRotationEuler;
+        //Eigen::Vector3d newRotationEuler = util::Quater2EulerAngle(Eigen::Quaterniond(newRotationMatrix));
+        Eigen::Vector3d newRotationEuler = newRotationMatrix.eulerAngles(0, 1, 2);
+        posture.bone_rotations[0] =
+            util::toDegree(Eigen::Vector4d(newRotationEuler[0], newRotationEuler[1], newRotationEuler[2], 0.0));
     }
 }
-
+    
 Motion blend(Motion bm1, Motion bm2, const std::vector<double> &weight) {
     // *TODO*
     // Task: Return a motion segment that blends bm1 and bm2.
